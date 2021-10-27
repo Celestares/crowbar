@@ -10,6 +10,7 @@ Currently **Crowbar** supports:
 - Remote Desktop Protocol (RDP) with NLA support (`-b rdp`)
 - SSH private key authentication (`-b sshkey`)
 - VNC key authentication (`-b vpn`)
+- OpenSSL (`-b openssl`) * [NEW] *
 
 - - -
 

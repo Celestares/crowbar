@@ -4,10 +4,14 @@ try:
     import sys
     import shlex
     import signal
+    import string
+    import random
     import paramiko
     import argparse
     import tempfile
     import subprocess
+    from time import time
+    from os import truncate
     from lib.nmap import Nmap
     from lib.core.common import *
     from lib.core.logger import Logger
@@ -19,18 +23,8 @@ except Exception as err:
 
     raise CrowbarExceptions(str(err))
 
-__version__ = '0.4.3-dev'
+__version__ = '0.4.1'
 __banner__ = 'Crowbar v%s' % (__version__)
-
-def main():
-    try:
-        crowbar = Main()
-        crowbar.run(crowbar.args.brute)
-    except Exception as err:
-        import sys
-
-        print(err, file=sys.stderr)
-        sys.exit(1)
 
 class AddressAction(argparse.Action):
     def __call__(self, parser, args, values, option=None):
@@ -90,13 +84,17 @@ class AddressAction(argparse.Action):
             elif (args.passwd is None) and (args.passwd_file is None):
                 mess = """ Usage: use --help for further information\ncrowbar.py: error: argument -c/--passwd or -C/--passwdfile expected one argument """
                 raise CrowbarExceptions(mess)
+        
+        elif args.brute == "openssl":
+            pass
+            # Need add stuff here
 
 
 class Main:
     is_success = 0
 
     def __init__(self):
-        self.services = {"openvpn": self.openvpn, "rdp": self.rdp, "sshkey": self.sshkey, "vnckey": self.vnckey}
+        self.services = {"openvpn": self.openvpn, "rdp": self.rdp, "sshkey": self.sshkey, "vnckey": self.vnckey, "openssl": self.ssl}
         self.crowbar_readme = "https://github.com/galkan/crowbar/blob/master/README.md"
 
         self.openvpn_path = "/usr/sbin/openvpn"
@@ -115,6 +113,15 @@ class Main:
 
         self.vncviewer_path = "/usr/bin/vncviewer"
         self.vnc_success = "Authentication successful"
+
+        self.openssl_path = "/usr/bin/openssl"
+        self.ssl_failure = "bad decrypt"
+        self.ssl_password = ""
+        self.ssl_cipher = ""
+        self.ssl_digest = ""
+        self.filecheck_path = "/usr/bin/file"
+        self.iter_required = 0
+        self.rand_char_string = string.ascii_letters + string.digits
 
         description = "Crowbar is a brute force tool which supports OpenVPN, Remote Desktop Protocol, SSH Private Keys and VNC Keys."
         usage = "Usage: use --help for further information"
@@ -155,7 +162,20 @@ class Main:
         parser.add_argument('-D', '--debug', dest='debug', action='store_true', help='Enable debug mode', default=False)
         parser.add_argument('-q', '--quiet', dest='quiet', action='store_true', help='Only display successful logins',
                             default=False)
+        parser.add_argument('--infile', dest='input_file', action='store', help='[SSL] Encrypted file location')
+        parser.add_argument('--outfile', dest='output_file', action='store', help='[SSL] Location of output')
+        parser.add_argument('--cipher', dest='cipher', action='store', help="[SSL] Cipher used for decryption. Type 'openssl enc -list' for all available ciphers. Default: aes-128-cbc. '*' to indicate all.")
+        parser.add_argument('--cipherfile', dest='cipher_file', action='store', help='[SSL] File containing list of ciphers to test')
+        parser.add_argument('--digest', dest='message_digest', action='store', help="[SSL] Message digest used for decryption. Type 'openssl dgst -list' for all available message digests. Default: sha256. '*' to indicate all.")
+        parser.add_argument('--digestfile', dest='message_digest_file', action='store', help='[SSL] File containing list of message digests to test')
+        parser.add_argument('--min', dest='min_char', action='store', help='[SSL] Password minimum length to brute-force. Default: 1')
+        parser.add_argument('--max', dest='max_char', action='store', help='[SSL] Password maximum length to brute-force. Default: 16')
+        parser.add_argument('--charset', dest='charset', action='store', help="[SSL] Charset used to brute force. Default: 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890'") 
+        parser.add_argument('--beginwith', dest='begin_with', action='store', help="[SSL] Specify password begins with what characters")
+        parser.add_argument('--endwith', dest='end_with', action='store', help="[SSL] Specify password ends with what characters")
+        # parser.add_argument('--updatetime', dest='update_time', action='store', help='[SSL] Display progress every x seconds. Default 15 seconds.')
         parser.add_argument('options', nargs='*', action=AddressAction)
+        
 
         try:
             self.args = parser.parse_args()
@@ -166,7 +186,7 @@ class Main:
 
         if self.args.discover:
             self.nmap = Nmap()
-        else:
+        elif self.args.brute != "openssl":
             iprange = IpRange()
 
             try:
@@ -180,7 +200,7 @@ class Main:
                             if not ip in self.ip_list:
                                 self.ip_list.append(ip)
             except IOError:
-                mess = "File: %s cannot be opened" % os.path.abspath(self.args.server_file)
+                mess = "File: %s cannot be opened!" % os.path.abspath(self.args.server_file)
                 raise CrowbarExceptions(mess)
             except:
                 mess = "Invalid IP Address! Please use IP/CIDR notation <192.168.37.37/32, 192.168.1.0/24>"
@@ -245,7 +265,7 @@ class Main:
             raise CrowbarExceptions(mess)
 
         if not os.path.exists(self.openvpn_path):
-            mess = "openvpn: %s path doesn't exists on the system" % os.path.abspath(self.openvpn_path)
+            mess = "openvpn: %s path doesn't exists on the system!" % os.path.abspath(self.openvpn_path)
             raise CrowbarExceptions(mess)
 
         if self.args.port is not None:
@@ -265,16 +285,6 @@ class Main:
             if re.search(self.vpn_remote_regex, config_line):
                 raise CrowbarExceptions(self.vpn_warning)
 
-        if self.args.username_file:
-            if not os.path.exists(self.args.username_file):
-                mess = "File: %s doesn't exists ~ %s" % os.path.abspath(self.args.username_file)
-                raise CrowbarExceptions(mess)
-
-        if self.args.passwd_file:
-            if not os.path.exists(self.args.passwd_file):
-                mess = "File: %s doesn't exists ~ %s" % os.path.abspath(self.args.passwd_file)
-                raise CrowbarExceptions(mess)
-
         for ip in self.ip_list:
             if not self.args.quiet:
                 self.logger.output_file("Trying %s:%s" % (ip, port))
@@ -282,16 +292,16 @@ class Main:
             if self.args.username_file:
                 try:
                     userfile = open(self.args.username_file, "r").read().splitlines()
-                except Exception as err:
-                    mess = "Error: %s" % err
+                except:
+                    mess = "File: %s doesn't exists!" % os.path.abspath(self.args.username_file)
                     raise CrowbarExceptions(mess)
 
                 for user in userfile:
                     if self.args.passwd_file:
                         try:
                             passwdfile = open(self.args.passwd_file, "r").read().splitlines()
-                        except Exception as err:
-                            mess = "Error: %s" % err
+                        except:
+                            mess = "File: %s doesn't exists!" % os.path.abspath(self.args.passwd_file)
                             raise CrowbarExceptions(mess)
 
                         for password in passwdfile:
@@ -308,8 +318,8 @@ class Main:
                 if self.args.passwd_file:
                     try:
                         passwdfile = open(self.args.passwd_file, "r").read().splitlines()
-                    except Exception as err:
-                        mess = "Error: %s" % err
+                    except:
+                        mess = "File: %s doesn't exists!" % os.path.abspath(self.args.passwd_file)
                         raise CrowbarExceptions(mess)
 
                     for password in passwdfile:
@@ -353,7 +363,7 @@ class Main:
         port = 5901
 
         if not os.path.exists(self.vncviewer_path):
-            mess = "vncviewer: %s path doesn't exists on the system" % os.path.abspath(self.vncviewer_path)
+            mess = "vncviewer: %s path doesn't exists on the system!" % os.path.abspath(self.vncviewer_path)
             raise CrowbarExceptions(mess)
 
         if self.args.port is not None:
@@ -365,7 +375,7 @@ class Main:
             self.ip_list = self.nmap.port_scan(self.args.server, port)
 
         if not os.path.isfile(self.args.key_file):
-            mess = "Key file: \"%s\" doesn't exists" % os.path.abspath(self.args.key_file)
+            mess = "Key file: \"%s\" doesn't exists." % os.path.abspath(self.args.key_file)
             raise CrowbarExceptions(mess)
 
         try:
@@ -380,8 +390,7 @@ class Main:
         pool.wait_completion()
 
     def rdplogin(self, ip, user, password, port):
-        # Could look into using: -grab-keyboard -mouse-motion -wallpaper -themes
-        rdp_cmd = "%s /v:%s /port:%s /u:%s /p:%s /cert-ignore -clipboard +auth-only " % (
+        rdp_cmd = "%s /v:%s /port:%s /u:%s /p:%s /cert-ignore +auth-only" % (
             self.xfreerdp_path, ip, port, user, password)
 
         if self.args.verbose == 2:
@@ -430,7 +439,7 @@ class Main:
         port = 3389
 
         if not os.path.exists(self.xfreerdp_path):
-            mess = "xfreerdp: %s path doesn't exists on the system" % os.path.abspath(self.xfreerdp_path)
+            mess = "xfreerdp: %s path doesn't exists on the system!" % os.path.abspath(self.xfreerdp_path)
             raise CrowbarExceptions(mess)
 
         if self.args.port is not None:
@@ -446,16 +455,6 @@ class Main:
         except Exception as err:
             raise CrowbarExceptions(str(err))
 
-        if self.args.username_file:
-            if not os.path.exists(self.args.username_file):
-                mess = "File: %s doesn't exists ~ %s" % os.path.abspath(self.args.username_file)
-                raise CrowbarExceptions(mess)
-
-        if self.args.passwd_file:
-            if not os.path.exists(self.args.passwd_file):
-                mess = "File: %s doesn't exists ~ %s" % os.path.abspath(self.args.passwd_file)
-                raise CrowbarExceptions(mess)
-
         for ip in self.ip_list:
             if not self.args.quiet:
                 self.logger.output_file("Trying %s:%s" % (ip, port))
@@ -463,8 +462,8 @@ class Main:
             if self.args.username_file:
                 try:
                     userfile = open(self.args.username_file, "r").read().splitlines()
-                except Exception as err:
-                    mess = "Error: %s" % err
+                except:
+                    mess = "File: %s doesn't exists!" % os.path.abspath(self.args.username_file)
                     raise CrowbarExceptions(mess)
 
                 for user in userfile:
@@ -474,8 +473,8 @@ class Main:
                     if self.args.passwd_file:
                         try:
                             passwdfile = open(self.args.passwd_file, "r").read().splitlines()
-                        except Exception as err:
-                            mess = "Error: %s" % err
+                        except:
+                            mess = "File: %s doesn't exists" % os.path.abspath(self.args.passwd_file)
                             raise CrowbarExceptions(mess)
 
                         for password in passwdfile:
@@ -486,8 +485,8 @@ class Main:
                 if self.args.passwd_file:
                     try:
                         passwdfile = open(self.args.passwd_file, "r").read().splitlines()
-                    except Exception as err:
-                        mess = "Error: %s" % err
+                    except:
+                        mess = "File: %s doesn't exists" % os.path.abspath(self.args.passwd_file)
                         raise CrowbarExceptions(mess)
 
                     for password in passwdfile:
@@ -533,13 +532,8 @@ class Main:
         except Exception as err:
             raise CrowbarExceptions(str(err))
 
-        if self.args.username_file:
-            if not os.path.exists(self.args.username_file):
-                mess = "File: %s doesn't exists ~ %s" % os.path.abspath(self.args.username_file)
-                raise CrowbarExceptions(mess)
-
         if not os.path.exists(self.args.key_file):
-            mess = "Key file/folder: \"%s\" doesn't exists" % os.path.abspath(self.args.key_file)
+            mess = "Key file/folder: \"%s\" doesn't exists." % os.path.abspath(self.args.key_file)
             raise CrowbarExceptions(mess)
 
         for ip in self.ip_list:
@@ -549,8 +543,8 @@ class Main:
             if self.args.username_file:
                 try:
                     userfile = open(self.args.username_file, "r").read().splitlines()
-                except Exception as err:
-                    mess = "Error: %s" % err
+                except:
+                    mess = "File: %s doesn't exists!" % os.path.abspath(self.args.username_file)
                     raise CrowbarExceptions(mess)
 
                 for user in userfile:
@@ -575,6 +569,354 @@ class Main:
                             pool.add_task(self.sshlogin, ip, port, self.args.username, keyfile_path, self.args.timeout)
                 else:
                     pool.add_task(self.sshlogin, ip, port, self.args.username, self.args.key_file, self.args.timeout)
+        pool.wait_completion()
+
+    def sslbrute(self, cipher, digest, infile, outfile, password, output=True):
+        
+        ssl_cmd = "%s enc -d -%s -md %s -in %s -out %s -k %s" % (
+            self.openssl_path, cipher, digest, infile, outfile, password
+        )
+
+        if self.args.verbose == 2:
+            self.logger.output_file("CMD: %s" % ssl_cmd)
+
+        # stderr to stdout
+        proc = subprocess.Popen(shlex.split(ssl_cmd), shell=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+        success1 = True
+        success2 = False
+
+        for line in proc.stdout:
+            # Failure
+            if re.search(self.ssl_failure, str(line)):
+                success1 = False
+            
+        if success1:
+            
+            # OLD METHOD - too much false positives
+            # file_cmd = "%s -i %s" % (self.filecheck_path, outfile)
+            # proc = subprocess.Popen(shlex.split(file_cmd), shell=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+            # for line in proc.stdout:
+
+            #     if re.search("%s: text/plain;" % outfile, str(line)):
+            #         if not re.search("charset=unknown", str(line)):
+            #             success2 = True
+
+            try:
+                char_count = 0
+                printable_count = 0
+
+                with open(outfile, "r", encoding="ISO-8859-1") as f:
+                    for line in f:
+                        for char in line:
+                            char_count += 1
+                            if char in string.printable or char.isspace():
+                                printable_count += 1
+                
+                if printable_count > (char_count / 10) * 9:  # At least 90% are ASCII printable characters
+                    success2 = True
+
+            except:
+                pass
+                
+            if success2:
+                result = bcolors.OKGREEN + "SSL-SUCCESS : " + bcolors.ENDC + bcolors.OKBLUE + password + bcolors.ENDC + "\033[K"
+                if output:
+                    print("\033[K", end="\r")
+                    self.logger.output_file(result)
+                Main.is_success = 1
+                self.ssl_password = password
+                self.ssl_cipher = cipher
+                self.ssl_digest = digest
+        
+        os.remove(outfile)
+        
+
+    def ssl(self):
+
+        cipher_list = ['aes-128-cbc', 'aes-128-cfb', 'aes-128-cfb1', 'aes-128-cfb8', 'aes-128-ctr', 'aes-128-ecb', 'aes-128-ofb', 'aes-192-cbc', 'aes-192-cfb', 'aes-192-cfb1', 'aes-192-cfb8', 'aes-192-ctr', 'aes-192-ecb', 'aes-192-ofb', 'aes-256-cbc', 'aes-256-cfb', 'aes-256-cfb1', 'aes-256-cfb8', 'aes-256-ctr', 'aes-256-ecb', 'aes-256-ofb', 'aes128', 'aes128-wrap', 'aes192', 'aes192-wrap', 'aes256', 'aes256-wrap', 'aria-128-cbc', 'aria-128-cfb', 'aria-128-cfb1', 'aria-128-cfb8', 'aria-128-ctr', 'aria-128-ecb', 'aria-128-ofb', 'aria-192-cbc', 'aria-192-cfb', 'aria-192-cfb1', 'aria-192-cfb8', 'aria-192-ctr', 'aria-192-ecb', 'aria-192-ofb', 'aria-256-cbc', 'aria-256-cfb', 'aria-256-cfb1', 'aria-256-cfb8', 'aria-256-ctr', 'aria-256-ecb', 'aria-256-ofb', 'aria128', 'aria192', 'aria256', 'bf', 'bf-cbc', 'bf-cfb', 'bf-ecb', 'bf-ofb', 'blowfish', 'camellia-128-cbc', 'camellia-128-cfb', 'camellia-128-cfb1', 'camellia-128-cfb8', 'camellia-128-ctr', 'camellia-128-ecb', 'camellia-128-ofb', 'camellia-192-cbc', 'camellia-192-cfb', 'camellia-192-cfb1', 'camellia-192-cfb8', 'camellia-192-ctr', 'camellia-192-ecb', 'camellia-192-ofb', 'camellia-256-cbc', 'camellia-256-cfb', 'camellia-256-cfb1', 'camellia-256-cfb8', 'camellia-256-ctr', 'camellia-256-ecb', 'camellia-256-ofb', 'camellia128', 'camellia192', 'camellia256', 'cast', 'cast-cbc', 'cast5-cbc', 'cast5-cfb', 'cast5-ecb', 'cast5-ofb', 'chacha20', 'des', 'des-cbc', 'des-cfb', 'des-cfb1', 'des-cfb8', 'des-ecb', 'des-ede', 'des-ede-cbc', 'des-ede-cfb', 'des-ede-ecb', 'des-ede-ofb', 'des-ede3', 'des-ede3-cbc', 'des-ede3-cfb', 'des-ede3-cfb1', 'des-ede3-cfb8', 'des-ede3-ecb', 'des-ede3-ofb', 'des-ofb', 'des3', 'des3-wrap', 'desx', 'desx-cbc', 'id-aes128-wrap', 'id-aes128-wrap-pad', 'id-aes192-wrap', 'id-aes192-wrap-pad', 'id-aes256-wrap', 'id-aes256-wrap-pad', 'id-smime-alg-CMS3DESwrap', 'rc2', 'rc2-128', 'rc2-40', 'rc2-40-cbc', 'rc2-64', 'rc2-64-cbc', 'rc2-cbc', 'rc2-cfb', 'rc2-ecb', 'rc2-ofb', 'rc4', 'rc4-40', 'seed', 'seed-cbc', 'seed-cfb', 'seed-ecb', 'seed-ofb', 'sm4', 'sm4-cbc', 'sm4-cfb', 'sm4-ctr', 'sm4-ecb', 'sm4-ofb']
+        message_digest_list = ['blake2b512', 'blake2s256', 'md4', 'md5', 'md5-sha1', 'ripemd', 'ripemd160', 'rmd160', 'sha1', 'sha224', 'sha256', 'sha3-224', 'sha3-256', 'sha3-384', 'sha3-512', 'sha384', 'sha512', 'sha512-224', 'sha512-256', 'shake128', 'shake256', 'sm3', 'ssl3-md5', 'ssl3-sha1', 'whirlpool']
+
+        if not os.path.exists(self.openssl_path):
+            mess = "openssl: %s path doesn't exists on the system!" % os.path.abspath(self.openssl_path)
+            raise CrowbarExceptions(mess)
+
+        try:
+            pool = ThreadPool(int(self.args.thread))
+        except Exception as err:
+            raise CrowbarExceptions(str(err))
+        
+        # Default values
+        if self.args.cipher_file:
+            try:
+                c = open(self.args.cipher_file, "r", encoding="ISO-8859-1").read().splitlines()
+            except:
+                mess = mess = "File: %s doesn't exists" % os.path.abspath(self.args.cipher_file)
+                raise CrowbarExceptions(mess)
+        elif not self.args.cipher:
+            c = ["aes-128-cbc"]  # Default cipher
+        elif self.args.cipher in cipher_list:
+            c = [self.args.cipher]
+        elif self.args.cipher == "*":
+            c = cipher_list
+        else:
+            mess = "Unknown cipher '%s'" % self.args.cipher
+            raise CrowbarExceptions(mess)
+        
+        if self.args.message_digest_file:
+            try:
+                d = open(self.args.message_digest_file, "r", encoding="ISO-8859-1").read().splitlines()
+            except:
+                mess = mess = "File: %s doesn't exists" % os.path.abspath(self.args.message_digest_file)
+                raise CrowbarExceptions(mess)
+        elif not self.args.message_digest:
+            d = ["sha256"]  # Default message digest
+        elif self.args.message_digest in message_digest_list:
+            d = [self.args.message_digest]
+        elif self.args.message_digest == "*":
+            d = message_digest_list
+        else:
+            mess = "Unknown message digest '%s'" % self.args.message_digest
+            raise CrowbarExceptions(mess)
+        
+        # if not self.args.update_time:
+        #     ut = 15  # Default update time
+        # else:
+        #     ut = float(self.args.update_time)
+        
+        # Create temporary work folder for decryption purposes
+        temp_folder_name = "".join(random.choices(self.rand_char_string, k=16))
+        temp_folder_path = os.path.join(os.getcwd(), temp_folder_name)
+        
+        tries = 0
+        while os.path.exists(temp_folder_path):
+            
+            if tries >= 5:
+                mess = "Unable to create a temporary directory"
+                raise CrowbarExceptions(mess)
+
+            temp_folder_name = "".join(random.choices(self.rand_char_string, k=16))
+            temp_folder_path = os.path.join(os.getcwd(), temp_folder_name)
+            tries += 1
+        
+        os.mkdir(temp_folder_path)
+        
+        if self.args.passwd_file:  # Password list provided
+
+            try:
+                passwdfile = open(self.args.passwd_file, "r", encoding="ISO-8859-1").read().splitlines()
+            except:
+                mess = "File: %s doesn't exists" % os.path.abspath(self.args.passwd_file)
+                raise CrowbarExceptions(mess)
+            
+            self.iter_required = len(c) * len(d) * len(passwdfile)
+            self.logger.output_file("Iteration(s) required: %s" % self.iter_required)
+
+            t = time()
+            total_time = time()
+
+            for cipher in c:
+                for digest in d:
+                    for password in passwdfile:
+
+                        # if time() - t >= ut:
+                        #     current_iter = (c.index(cipher) * len(d) + d.index(digest)) * len(passwdfile) + passwdfile.index(password)
+                        #     self.logger.output_file("Total:[%s / %s]  Cipher: %s [%s / %s]  Digest: %s [%s / %s]  Password:[%s / %s]" % (
+                        #         current_iter, self.iter_required, cipher, c.index(cipher), len(c), digest, d.index(digest), len(d), passwdfile.index(password), len(passwdfile))
+                        #     )
+                        #     t = time()
+
+                        current_iter = (c.index(cipher) * len(d) + d.index(digest)) * len(passwdfile) + passwdfile.index(password)
+                        print("Total:[%s / %s]  Cipher: %s [%s / %s]  Digest: %s [%s / %s]  Password:[%s / %s]" % (
+                            current_iter, self.iter_required, cipher, c.index(cipher), len(c), digest, d.index(digest), len(d), passwdfile.index(password), len(passwdfile)), end="\033[K\r"
+                        )
+
+                        # Create temporary work file containing encryption data for decryption purposes
+                        temp_file = "".join(random.choices(self.rand_char_string, k=16))  + "_" + password
+                        temp_file_path = os.path.join(temp_folder_path, temp_file)
+
+                        tries = 0
+                        while os.path.exists(temp_file_path):
+                            
+                            if tries >= 5:
+                                mess = "Unable to create a temporary directory"
+                                raise CrowbarExceptions(mess)
+
+                            temp_file = "".join(random.choices(self.rand_char_string, k=16))
+                            temp_file_path = os.path.join(temp_folder_path, temp_file)
+                            tries += 1
+                        
+                        with open(temp_file_path, "w") as f:
+                            pass
+
+                        pool.add_task(self.sslbrute, cipher, digest, self.args.input_file, temp_file_path, password)
+                 
+        elif self.args.passwd:  # Single password provided
+
+            self.iter_required = len(c) * len(d) * 1
+            self.logger.output_file("Iteration(s) required: %s" % self.iter_required)
+
+            t = time()
+            total_time = time()
+
+            for cipher in c:
+                for digest in d:
+
+                    # if time() - t >= ut:
+                    #     current_iter = (c.index(cipher) * len(d) + d.index(digest))
+                    #     self.logger.output_file("Total:[%s / %s]  Cipher: %s [%s / %s]  Digest: %d [%s / %s]" % (
+                    #         current_iter, self.iter_required, cipher, c.index(cipher), len(c), digest, d.index(digest), len(d))
+                    #     )
+                    #     t = time()
+
+                    current_iter = (c.index(cipher) * len(d) + d.index(digest))
+                    print("Total:[%s / %s]  Cipher: %s [%s / %s]  Digest: %s [%s / %s]" % (
+                        current_iter, self.iter_required, cipher, c.index(cipher), len(c), digest, d.index(digest), len(d)), end="\033[K\r"
+                    )
+                    
+                    temp_file = "".join(random.choices(self.rand_char_string, k=16))  + "_" + self.args.passwd
+                    temp_file_path = os.path.join(temp_folder_path, temp_file)
+
+                    tries = 0
+                    while os.path.exists(temp_file_path):
+                        
+                        if tries >= 5:
+                            mess = "Unable to create a temporary directory"
+                            raise CrowbarExceptions(mess)
+
+                        temp_file = "".join(random.choices(self.rand_char_string, k=16))
+                        temp_file_path = os.path.join(temp_folder_path, temp_file)
+                        tries += 1
+                    
+                    with open(temp_file_path, "w") as f:
+                        pass
+
+                    pool.add_task(self.sslbrute, cipher, digest, self.args.input_file, temp_file_path, self.args.passwd)
+        
+        else:  # No password provided (Use charset to brute-force)
+
+            if not self.args.min_char:
+                minimum_character = 1  # Default minimum character
+            else:
+                minimum_character = int(self.args.min_char)
+
+            if not self.args.max_char:
+                maximum_character = 16  # Default maximum character
+            else:
+                maximum_character = int(self.args.max_char)
+            
+            if not self.args.charset:
+                charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"  # Default charset
+            else:
+                charset = str(self.args.charset)
+            
+            if not self.args.begin_with:
+                begin = ""  # Default beginning characters
+            else:
+                begin = str(self.args.begin_with)
+            
+            if not self.args.end_with:
+                end = ""  # Default ending characters
+            else:
+                end = str(self.args.end_with)
+            
+            # Run checks to ensure validity of arguments
+            if minimum_character <= 0:
+                mess = "Minimum character cannot be lower or equal to 0!"
+                raise CrowbarExceptions(mess)
+            elif minimum_character > maximum_character:
+                mess = "Minimum character specified cannot be lower than that maximum character!"
+                raise CrowbarExceptions(mess)
+            elif len(begin) + len(end) >= maximum_character:
+                mess = "Length of beginning and ending characters cannot be same or more than the specified maximum number of characters!"
+            
+            if minimum_character > len(begin) + len(end):
+                minimum_character -= len(begin) + len(end)
+            else:
+                minimum_character = 1
+            
+            maximum_character -= len(begin) + len(end)
+            ceiling = len(charset)
+
+            total = 0
+            for i in range(1, maximum_character + 1):
+                total += len(charset) ** i
+            self.iter_required = len(c) * len(d) * total
+            self.logger.output_file("Iteration(s) required: %s" % self.iter_required)
+
+            t = time()
+            total_time = time()
+
+            for cipher in c:
+                for digest in d:
+                    password_index = [0] * minimum_character  # Use to retrieve the associated characters in the charset
+                    count = 1
+                    
+                    while len(password_index) <= maximum_character:
+
+                        # if time() - t >= ut:
+                        #     current_iter = (c.index(cipher) * len(d) + d.index(digest)) * total + count
+                        #     self.logger.output_file("Total:[%s / %s]  Cipher: %s [%s / %s]  Digest: %s [%s / %s]  Password:[%s / %s]" % (
+                        #         current_iter, self.iter_required, cipher, c.index(cipher), len(c), digest, d.index(digest), len(d), count, total)
+                        #     )
+                        #     t = time()
+                        
+                        current_iter = (c.index(cipher) * len(d) + d.index(digest)) * total + count
+                        print("Total:[%s / %s]  Cipher: %s [%s / %s]  Digest: %s [%s / %s]  Password:[%s / %s]" % (
+                            current_iter, self.iter_required, cipher, c.index(cipher), len(c), digest, d.index(digest), len(d), count, total), end="\033[K\r"
+                        )
+
+                        password = begin + "".join([charset[i] for i in password_index]) + end
+
+                        temp_file = "".join(random.choices(self.rand_char_string, k=16))  + "_" + password
+                        temp_file_path = os.path.join(temp_folder_path, temp_file)
+
+                        tries = 0
+                        while os.path.exists(temp_file_path):
+                            
+                            if tries >= 5:
+                                mess = "Unable to create a temporary directory"
+                                raise CrowbarExceptions(mess)
+
+                            temp_file = "".join(random.choices(self.rand_char_string, k=16))
+                            temp_file_path = os.path.join(temp_folder_path, temp_file)
+                            tries += 1
+                        
+                        with open(temp_file_path, "w") as f:
+                            pass
+
+                        pool.add_task(self.sslbrute, cipher, digest, self.args.input_file, temp_file_path, password)
+
+                        password_index[-1] += 1
+                        for i in range(len(password_index)):
+                            if password_index[len(password_index) - i - 1] == ceiling:
+                                if i != len(password_index) - 1:
+                                    password_index[len(password_index) - i - 1] = 0
+                                    password_index[len(password_index) - i - 2] += 1
+                                else:
+                                    password_index[0] = 0
+                                    password_index.insert(0, 0)
+                        
+                        count += 1
+                
+        pool.wait_completion()
+
+        time_taken = round(time() - total_time, 3)
+        print("\033[K", end="\r")
+        self.logger.output_file("Time taken (in seconds): %s second(s)" % time_taken)
+
+        # Re-execute for correct password to ensure output file is decrypted properly using the correct password
+        try:
+            pool = ThreadPool(int(self.args.thread))
+        except Exception as err:
+            raise CrowbarExceptions(str(err))
+
+        if self.ssl_password:
+            pool.add_task(self.sslbrute, self.ssl_cipher, self.ssl_digest, self.args.input_file, self.args.output_file, self.ssl_password, output=False)
+
+        os.rmdir(temp_folder_path)
+
         pool.wait_completion()
 
     def run(self, brute_type):
