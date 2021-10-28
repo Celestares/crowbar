@@ -26,6 +26,7 @@ except Exception as err:
 __version__ = '0.4.1'
 __banner__ = 'Crowbar v%s' % (__version__)
 
+
 class AddressAction(argparse.Action):
     def __call__(self, parser, args, values, option=None):
 
@@ -86,8 +87,12 @@ class AddressAction(argparse.Action):
                 raise CrowbarExceptions(mess)
         
         elif args.brute == "openssl":
-            pass
-            # Need add stuff here
+            if args.input_file is None:
+                mess = """ Usage: use --help for further information\ncrowbar.py: error: argument --infile expected one argument """
+                raise CrowbarExceptions(mess)
+            elif args.output_file is None:
+                mess = """ Usage: use --help for further information\ncrowbar.py: error: argument --outfile expected one argument """
+                raise CrowbarExceptions(mess)
 
 
 class Main:
@@ -122,6 +127,7 @@ class Main:
         self.filecheck_path = "/usr/bin/file"
         self.iter_required = 0
         self.rand_char_string = string.ascii_letters + string.digits
+        self.test_list = []
 
         description = "Crowbar is a brute force tool which supports OpenVPN, Remote Desktop Protocol, SSH Private Keys and VNC Keys."
         usage = "Usage: use --help for further information"
@@ -593,16 +599,20 @@ class Main:
             
         if success1:
             
-            # OLD METHOD - too much false positives
+            # OLD METHOD - PRO: can be modified easily to handle for all type of files, CON: too much false positives on text-based files
             # file_cmd = "%s -i %s" % (self.filecheck_path, outfile)
             # proc = subprocess.Popen(shlex.split(file_cmd), shell=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
             # for line in proc.stdout:
 
-            #     if re.search("%s: text/plain;" % outfile, str(line)):
+            #     if str(line).split(":")[1] not in self.test_list:
+            #         self.test_list.append(str(line).split(":")[1])
+
+            #     if re.search("%s: image/jpeg;" % outfile, str(line)):
             #         if not re.search("charset=unknown", str(line)):
             #             success2 = True
 
+            # NEW METHOD - PRO: no false positives found, CON: only works with text-based files e.g., .txt, .py
             try:
                 char_count = 0
                 printable_count = 0
@@ -630,9 +640,9 @@ class Main:
                 self.ssl_cipher = cipher
                 self.ssl_digest = digest
         
-        os.remove(outfile)
+        if output:
+            os.remove(outfile)
         
-
     def ssl(self):
 
         cipher_list = ['aes-128-cbc', 'aes-128-cfb', 'aes-128-cfb1', 'aes-128-cfb8', 'aes-128-ctr', 'aes-128-ecb', 'aes-128-ofb', 'aes-192-cbc', 'aes-192-cfb', 'aes-192-cfb1', 'aes-192-cfb8', 'aes-192-ctr', 'aes-192-ecb', 'aes-192-ofb', 'aes-256-cbc', 'aes-256-cfb', 'aes-256-cfb1', 'aes-256-cfb8', 'aes-256-ctr', 'aes-256-ecb', 'aes-256-ofb', 'aes128', 'aes128-wrap', 'aes192', 'aes192-wrap', 'aes256', 'aes256-wrap', 'aria-128-cbc', 'aria-128-cfb', 'aria-128-cfb1', 'aria-128-cfb8', 'aria-128-ctr', 'aria-128-ecb', 'aria-128-ofb', 'aria-192-cbc', 'aria-192-cfb', 'aria-192-cfb1', 'aria-192-cfb8', 'aria-192-ctr', 'aria-192-ecb', 'aria-192-ofb', 'aria-256-cbc', 'aria-256-cfb', 'aria-256-cfb1', 'aria-256-cfb8', 'aria-256-ctr', 'aria-256-ecb', 'aria-256-ofb', 'aria128', 'aria192', 'aria256', 'bf', 'bf-cbc', 'bf-cfb', 'bf-ecb', 'bf-ofb', 'blowfish', 'camellia-128-cbc', 'camellia-128-cfb', 'camellia-128-cfb1', 'camellia-128-cfb8', 'camellia-128-ctr', 'camellia-128-ecb', 'camellia-128-ofb', 'camellia-192-cbc', 'camellia-192-cfb', 'camellia-192-cfb1', 'camellia-192-cfb8', 'camellia-192-ctr', 'camellia-192-ecb', 'camellia-192-ofb', 'camellia-256-cbc', 'camellia-256-cfb', 'camellia-256-cfb1', 'camellia-256-cfb8', 'camellia-256-ctr', 'camellia-256-ecb', 'camellia-256-ofb', 'camellia128', 'camellia192', 'camellia256', 'cast', 'cast-cbc', 'cast5-cbc', 'cast5-cfb', 'cast5-ecb', 'cast5-ofb', 'chacha20', 'des', 'des-cbc', 'des-cfb', 'des-cfb1', 'des-cfb8', 'des-ecb', 'des-ede', 'des-ede-cbc', 'des-ede-cfb', 'des-ede-ecb', 'des-ede-ofb', 'des-ede3', 'des-ede3-cbc', 'des-ede3-cfb', 'des-ede3-cfb1', 'des-ede3-cfb8', 'des-ede3-ecb', 'des-ede3-ofb', 'des-ofb', 'des3', 'des3-wrap', 'desx', 'desx-cbc', 'id-aes128-wrap', 'id-aes128-wrap-pad', 'id-aes192-wrap', 'id-aes192-wrap-pad', 'id-aes256-wrap', 'id-aes256-wrap-pad', 'id-smime-alg-CMS3DESwrap', 'rc2', 'rc2-128', 'rc2-40', 'rc2-40-cbc', 'rc2-64', 'rc2-64-cbc', 'rc2-cbc', 'rc2-cfb', 'rc2-ecb', 'rc2-ofb', 'rc4', 'rc4-40', 'seed', 'seed-cbc', 'seed-cfb', 'seed-ecb', 'seed-ofb', 'sm4', 'sm4-cbc', 'sm4-cfb', 'sm4-ctr', 'sm4-ecb', 'sm4-ofb']
@@ -651,8 +661,15 @@ class Main:
         if self.args.cipher_file:
             try:
                 c = open(self.args.cipher_file, "r", encoding="ISO-8859-1").read().splitlines()
+                for cipher in c:  # Check that all ciphers in file is valid
+                    if cipher not in cipher_list:
+                        mess = "Unknown cipher '%s' in file" % cipher
+                        raise CrowbarExceptions(mess)
+                seen = set()  # Remove duplicates
+                seen_add = seen.add
+                c = [s for s in c if not (s in seen or seen_add(s))]
             except:
-                mess = mess = "File: %s doesn't exists" % os.path.abspath(self.args.cipher_file)
+                mess = "File: %s doesn't exists" % os.path.abspath(self.args.cipher_file)
                 raise CrowbarExceptions(mess)
         elif not self.args.cipher:
             c = ["aes-128-cbc"]  # Default cipher
@@ -667,8 +684,15 @@ class Main:
         if self.args.message_digest_file:
             try:
                 d = open(self.args.message_digest_file, "r", encoding="ISO-8859-1").read().splitlines()
+                for digest in d:  # Check that all digests in file is valid
+                    if digest not in d:
+                        mess = "Unknown message digest '%s' in file" % digest
+                        raise CrowbarExceptions(mess)
+                seen = set()  # Remove duplicates
+                seen_add = seen.add
+                d = [s for s in d if not (s in seen or seen_add(s))]
             except:
-                mess = mess = "File: %s doesn't exists" % os.path.abspath(self.args.message_digest_file)
+                mess = "File: %s doesn't exists" % os.path.abspath(self.args.message_digest_file)
                 raise CrowbarExceptions(mess)
         elif not self.args.message_digest:
             d = ["sha256"]  # Default message digest
@@ -685,7 +709,7 @@ class Main:
         # else:
         #     ut = float(self.args.update_time)
         
-        # Create temporary work folder for decryption purposes
+        # Create temporary work folder for decryption purposes to take place in
         temp_folder_name = "".join(random.choices(self.rand_char_string, k=16))
         temp_folder_path = os.path.join(os.getcwd(), temp_folder_name)
         
@@ -847,27 +871,26 @@ class Main:
 
             t = time()
             total_time = time()
+            # count_in_one_second = 0
+            # count_per_second = 0
 
             for cipher in c:
                 for digest in d:
-                    password_index = [0] * minimum_character  # Use to retrieve the associated characters in the charset
-                    count = 1
-                    
-                    while len(password_index) <= maximum_character:
 
-                        # if time() - t >= ut:
-                        #     current_iter = (c.index(cipher) * len(d) + d.index(digest)) * total + count
-                        #     self.logger.output_file("Total:[%s / %s]  Cipher: %s [%s / %s]  Digest: %s [%s / %s]  Password:[%s / %s]" % (
-                        #         current_iter, self.iter_required, cipher, c.index(cipher), len(c), digest, d.index(digest), len(d), count, total)
-                        #     )
+                    count = 0  
+                    while count < total:
+
+                        # if time() - t > 1:
+                        #     count_per_second = count_in_one_second
+                        #     count_in_one_second = 0
                         #     t = time()
-                        
+
                         current_iter = (c.index(cipher) * len(d) + d.index(digest)) * total + count
                         print("Total:[%s / %s]  Cipher: %s [%s / %s]  Digest: %s [%s / %s]  Password:[%s / %s]" % (
                             current_iter, self.iter_required, cipher, c.index(cipher), len(c), digest, d.index(digest), len(d), count, total), end="\033[K\r"
                         )
 
-                        password = begin + "".join([charset[i] for i in password_index]) + end
+                        password = self.dec_to_charset(count, charset)
 
                         temp_file = "".join(random.choices(self.rand_char_string, k=16))  + "_" + password
                         temp_file_path = os.path.join(temp_folder_path, temp_file)
@@ -888,17 +911,66 @@ class Main:
 
                         pool.add_task(self.sslbrute, cipher, digest, self.args.input_file, temp_file_path, password)
 
-                        password_index[-1] += 1
-                        for i in range(len(password_index)):
-                            if password_index[len(password_index) - i - 1] == ceiling:
-                                if i != len(password_index) - 1:
-                                    password_index[len(password_index) - i - 1] = 0
-                                    password_index[len(password_index) - i - 2] += 1
-                                else:
-                                    password_index[0] = 0
-                                    password_index.insert(0, 0)
-                        
                         count += 1
+                        # count_in_one_second += 1  
+
+            # for cipher in c:
+            #     for digest in d:
+            #         password_index = [0] * minimum_character  # Use to retrieve the associated characters in the charset
+            #         count = 1
+                    
+            #         while len(password_index) <= maximum_character:
+
+            #             # if time() - t >= ut:
+            #             #     current_iter = (c.index(cipher) * len(d) + d.index(digest)) * total + count
+            #             #     self.logger.output_file("Total:[%s / %s]  Cipher: %s [%s / %s]  Digest: %s [%s / %s]  Password:[%s / %s]" % (
+            #             #         current_iter, self.iter_required, cipher, c.index(cipher), len(c), digest, d.index(digest), len(d), count, total)
+            #             #     )
+            #             #     t = time()
+
+            #             if time() - t > 1:
+            #                 count_per_second = count_in_one_second
+            #                 count_in_one_second = 0
+            #                 t = time()
+                        
+            #             current_iter = (c.index(cipher) * len(d) + d.index(digest)) * total + count
+            #             print("Total:[%s / %s]  Cipher: %s [%s / %s]  Digest: %s [%s / %s]  Password:[%s / %s] %s passwords/s" % (
+            #                 current_iter, self.iter_required, cipher, c.index(cipher), len(c), digest, d.index(digest), len(d), count, total, count_per_second), end="\033[K\r"
+            #             )
+
+            #             password = begin + "".join([charset[i] for i in password_index]) + end
+
+            #             temp_file = "".join(random.choices(self.rand_char_string, k=16))  + "_" + password
+            #             temp_file_path = os.path.join(temp_folder_path, temp_file)
+
+            #             tries = 0
+            #             while os.path.exists(temp_file_path):
+                            
+            #                 if tries >= 5:
+            #                     mess = "Unable to create a temporary directory"
+            #                     raise CrowbarExceptions(mess)
+
+            #                 temp_file = "".join(random.choices(self.rand_char_string, k=16))
+            #                 temp_file_path = os.path.join(temp_folder_path, temp_file)
+            #                 tries += 1
+                        
+            #             with open(temp_file_path, "w") as f:
+            #                 pass
+
+            #             pool.add_task(self.sslbrute, cipher, digest, self.args.input_file, temp_file_path, password)
+
+            #             password_index[-1] += 1
+            #             for i in range(len(password_index)):
+            #                 if password_index[len(password_index) - i - 1] == ceiling:
+            #                     if i != len(password_index) - 1:
+            #                         password_index[len(password_index) - i - 1] = 0
+            #                         password_index[len(password_index) - i - 2] += 1
+            #                     else:
+            #                         password_index[0] = 0
+            #                         password_index.insert(0, 0)
+                        
+            #             count += 1
+            #             count_in_one_second += 1
                 
         pool.wait_completion()
 
@@ -918,6 +990,12 @@ class Main:
         os.rmdir(temp_folder_path)
 
         pool.wait_completion()
+    
+    def dec_to_charset(self, n, charset):  # New password brute-force algorithm
+        if n < len(charset):
+            return charset[n]
+        else:
+            return self.dec_to_charset(n // len(charset) - 1, charset) + charset[n % len(charset)]
 
     def run(self, brute_type):
         signal.signal(signal.SIGINT, self.signal_handler)
