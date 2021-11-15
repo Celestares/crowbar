@@ -1,5 +1,11 @@
 ## Crowbar - Brute forcing tool
 
+### NOTE
+This is a modified version of Crowbar where a new functionality is added to perform brute-force password attack on files that are encrypted using OpenSSL. To use this modified version of Crowbar, copy the modified content of the python file main.py located in the lib folder and replace the content of that same file in the linux machine which is located at /usr/share/crowbar/lib/main.py
+
+If you cannot find the file in the linux machine, it means that you have not install yet, follow the installation guide below before proceeding.
+
+
 ### What is Crowbar?
 
 **Crowbar** _(formally known as Levye)_ is a brute forcing tool that can be used during penetration tests. It was developed to brute force some protocols in a different manner according to other popular brute forcing tools. As an example, while most brute forcing tools use username and password for SSH brute force, Crowbar uses SSH key(s). This allows for any private keys that have been obtained during penetration tests, to be used to attack other SSH servers.
