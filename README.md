@@ -5,6 +5,8 @@ This is a modified version of Crowbar where a new functionality is added to perf
 
 If you cannot find the file in the linux machine, it means that you have not install yet, follow the installation guide below before proceeding.
 
+There is an extra folder named "experiments and extras" containing all the previous version of Crowbar and also my testings for the various brute-force algorithm that I have created.
+
 
 ### What is Crowbar?
 
@@ -82,6 +84,18 @@ _Don't forget to patch `./lib/main.py` to point to the new binary_!
 - **-u**: Single username
 - **-U**: `</path/to/file>` which stores the username list
 - **-v**: Enable verbose mode (shows all the attempts)
+- **--infile**    : `</path/to/file>` which stores the encrypted file
+- **--outfile**   : `</path/to/file>` which outputs the decrypted file
+- **--cipher**    : Static cipher to decrypt with
+- **--cipherfile**: `</path/to/file>` which stores the ciphers list
+- **--digest**    : Static message digest to decrypt with
+- **--digestfile**: `</path/to/file>` which stores the message digests list
+- **--min**       : Minimum character
+- **--maxv**      : Maximum character
+- **--charset**   : Character set
+- **--beginwith** : Beginning character(s)
+- **--endwith**   : Ending character(s)
+- **--regex**     : Regular Expression
 
 If you want see all usage options, please use: `./crowbar.py --help`.
 
@@ -215,6 +229,20 @@ remote vpn.example.com 1194 udp
 ```
 
 ![](https://raw.githubusercontent.com/galkan/crowbar/master/images/crowbar-vpn.jpg)
+
+- - -
+
+### Brute Forcing - OpenSSL
+
+Below is an example of attacking files encrypted with OpenSSL using Crowbar.
+
+OpenSSL brute force attempt to a single encrypted file using a cipher list, digest list, and a password list.
+
+```
+# crowbar -b openssl --infile a.enc --outfile a.txt --cipherfile lists/cipher_list.txt --digestfile lists/digest_list.txt -C lists/smallyou.txt
+```
+
+![]https://raw.githubusercontent.com/Celestares/crowbar/master/images/crowvar-ssl.png
 
 - - -
 
