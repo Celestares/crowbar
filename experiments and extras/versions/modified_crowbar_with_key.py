@@ -1,4 +1,4 @@
-try:
+try:  # Version 2
     import os
     import re
     import sys
@@ -183,7 +183,6 @@ class Main:
         parser.add_argument('--charset', dest='charset', action='store', help="[SSL] Charset used to brute force. Default: 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890'") 
         parser.add_argument('--beginwith', dest='begin_with', action='store', help="[SSL] Specify password begins with what characters")
         parser.add_argument('--endwith', dest='end_with', action='store', help="[SSL] Specify password ends with what characters")
-        parser.add_argument('--regex', dest='regex_string', action='store', help='[SSL] Specify the regex of the password')
         # parser.add_argument('--updatetime', dest='update_time', action='store', help='[SSL] Display progress every x seconds. Default 15 seconds.')
         parser.add_argument('options', nargs='*', action=AddressAction)
         
@@ -695,53 +694,6 @@ class Main:
         except Exception as err:
             raise CrowbarExceptions(str(err))
         
-        # Setting up default values
-        if not self.args.min_char:
-            minimum_character = 1  # Default minimum character
-        else:
-            minimum_character = int(self.args.min_char)
-
-        if not self.args.max_char:
-            maximum_character = 16  # Default maximum character
-        else:
-            maximum_character = int(self.args.max_char)
-        
-        if not self.args.charset:
-            charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"  # Default charset
-        else:
-            charset = str(self.args.charset)
-        
-        if not self.args.begin_with:
-            begin = ""  # Default beginning characters
-        else:
-            begin = str(self.args.begin_with)
-        
-        if not self.args.end_with:
-            end = ""  # Default ending characters
-        else:
-            end = str(self.args.end_with)
-        
-        # Run checks to ensure validity of arguments
-        if minimum_character <= 0:
-            mess = "Minimum character cannot be lower or equal to 0!"
-            raise CrowbarExceptions(mess)
-        elif maximum_character <= 0:
-            mess = "Maximum character cannot be lower or equal to 0!"
-            raise CrowbarExceptions(mess)
-        elif minimum_character > maximum_character:
-            mess = "Minimum character specified cannot be lower than that maximum character!"
-            raise CrowbarExceptions(mess)
-        elif len(begin) + len(end) >= maximum_character:
-            mess = "Length of beginning and ending characters cannot be same or more than the specified maximum number of characters!"
-            raise CrowbarExceptions(mess)
-
-        if minimum_character > len(begin) + len(end):
-            minimum_character -= len(begin) + len(end)
-        else:
-            minimum_character = 1
-        
-        maximum_character -= len(begin) + len(end)
-        
         if self.args.key_file:
             
             if not os.path.exists(os.path.join(os.getcwd(), self.args.key_file)):
@@ -767,81 +719,70 @@ class Main:
 
                 for password in passwdfile:
 
+                    if not password:
+                        continue
+
                     current_iter = passwdfile.index(password)
                     print("Password:[%s / %s]" % (
                         current_iter, len(passwdfile)), end="\033[K\r"
                     )
 
-                    # Filters
-                    if not password:
-                        continue
-                    elif self.args.regex_string:
-                        if not re.fullmatch(self.args.regex_string, password):
-                            continue
-                    elif len(password) < minimum_character:
-                        continue
-                    elif len(password) > maximum_character:
-                        continue
-                    elif not password.startswith(begin):
-                        continue
-                    elif not password.endswith(end):
-                        continue
-
                     pool.add_task(self.sslbrute, None, None, self.args.input_file, self.args.output_file, password, self.args.key_file)
 
-            elif self.args.passwd:                
+            elif self.args.passwd:
                 
                 total_time = time()
                 pool.add_task(self.sslbrute, None, None, self.args.input_file, self.args.output_file, self.args.passwd, self.args.key_file)
-
-            elif self.args.regex_string:
-                try:
-                    re.compile(self.args.regex_string)
-                except re.error:
-                    raise CrowbarExceptions("ERROR: Regex provided is not valid")
                 
-                regex_list = self.regex_reader(self.args.regex_string)
-                char_count = 0
-                iter_required = 1
-                fixed = []
-                password_index = []
-                for component in regex_list:
-                    if component[1] == 0:
-                        fixed.insert(0, [component[0], char_count])
-                    else:
-                        iter_required *= len(component[0]) ** component[1]
-                    char_count += component[1]
-                    for i in range(component[1]):
-                        password_index.append([0, component[0]])
-
-                print(f"Iterations required: {iter_required}")
-                total_time = time()
-                
-                count = 0
-                while len(password_index) <= char_count:
-
-                    print("Password:[%s / %s]" % (
-                        count, iter_required), end="\033[K\r"
-                    )
-
-                    password = self.regex_brute(password_index)
-                    if len(password_index) > char_count:
-                        break
-
-                    for f in fixed:
-                        if len(password) == f[1]:  # Fixed password is at end
-                            password = password + f[0]
-                        elif f[1] == 0:  # Fixed password is at beginning
-                            password = f[0] + password
-                        else:  # Fixed password is in between
-                            password = password[:f[1]] + f[0] + password[f[1]:]
-                    
-                    pool.add_task(self.sslbrute, None, None, self.args.input_file, self.args.output_file, password, self.args.key_file)
-                    password_index[-1][0] += 1
-                    count += 1
-
             else:
                 
+                if not self.args.min_char:
+                    minimum_character = 1  # Default minimum character
+                else:
+                    minimum_character = int(self.args.min_char)
+
+                if not self.args.max_char:
+                    maximum_character = 16  # Default maximum character
+                else:
+                    maximum_character = int(self.args.max_char)
+                
+                if not self.args.charset:
+                    charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"  # Default charset
+                else:
+                    charset = str(self.args.charset)
+                
+                if not self.args.begin_with:
+                    begin = ""  # Default beginning characters
+                else:
+                    begin = str(self.args.begin_with)
+                
+                if not self.args.end_with:
+                    end = ""  # Default ending characters
+                else:
+                    end = str(self.args.end_with)
+                
+                # Run checks to ensure validity of arguments
+                if minimum_character <= 0:
+                    mess = "Minimum character cannot be lower or equal to 0!"
+                    raise CrowbarExceptions(mess)
+                elif maximum_character <= 0:
+                    mess = "Maximum character cannot be lower or equal to 0!"
+                    raise CrowbarExceptions(mess)
+                elif minimum_character > maximum_character:
+                    mess = "Minimum character specified cannot be lower than that maximum character!"
+                    raise CrowbarExceptions(mess)
+                elif len(begin) + len(end) >= maximum_character:
+                    mess = "Length of beginning and ending characters cannot be same or more than the specified maximum number of characters!"
+                    raise CrowbarExceptions(mess)
+
+                if minimum_character > len(begin) + len(end):
+                    minimum_character -= len(begin) + len(end)
+                else:
+                    minimum_character = 1
+                
+                maximum_character -= len(begin) + len(end)
+                # ceiling = len(charset)
+
                 start_num = 0
                 for i in range(1, minimum_character):
                     start_num += len(charset) ** i
@@ -862,31 +803,10 @@ class Main:
                     )
 
                     password = begin + self.dec_to_charset(count, charset) + end
-
-                    # Filters
-                    valid = True
-                    if not password:
-                        valid = False
-                    elif self.args.regex_string:
-                        if not re.fullmatch(self.args.regex_string, password):
-                            valid = False
-                    elif len(password) < minimum_character:
-                        valid = False
-                    elif len(password) > maximum_character:
-                        valid = False
-                    elif not password.startswith(begin):
-                        valid = False
-                    elif not password.endswith(end):
-                        valid = False
-                    
-                    if not valid:
-                        count += 1
-                        continue
-
                     pool.add_task(self.sslbrute, None, None, self.args.input_file, self.args.output_file, password, self.args.key_file)
                     count += 1
         
-        else:  # Key file not provided
+        else:
 
             if not os.path.exists(os.path.join(os.getcwd(), self.args.input_file)):
                 mess = "File: %s doesn't exists" % os.path.abspath(self.args.input_file)
@@ -895,9 +815,9 @@ class Main:
             # Default values
             if self.args.cipher_file:
                 try:
-                    invalid_cipher = 0
                     c = open(self.args.cipher_file, "r", encoding="ISO-8859-1").read().splitlines()
                     for cipher in c:  # Check that all ciphers in file is valid
+                        invalid_cipher = 0
                         if cipher not in cipher_list:
                             mess = "Unknown cipher '%s' in file" % cipher
                             invalid_cipher = 1
@@ -924,9 +844,9 @@ class Main:
             
             if self.args.message_digest_file:
                 try:
-                    invalid_digest = 0
                     d = open(self.args.message_digest_file, "r", encoding="ISO-8859-1").read().splitlines()
                     for digest in d:  # Check that all digests in file is valid
+                        invalid_digest = 0
                         if digest not in message_digest_list:
                             mess = "Unknown message digest '%s' in file" % digest
                             invalid_digest = 1
@@ -1003,21 +923,6 @@ class Main:
                                 current_iter, self.iter_required, cipher, c.index(cipher), len(c), digest, d.index(digest), len(d), passwdfile.index(password), len(passwdfile)), end="\033[K\r"
                             )
 
-                            # Filters
-                            if not password:
-                                continue
-                            elif self.args.regex_string:
-                                if not re.fullmatch(self.args.regex_string, password):
-                                    continue
-                            elif len(password) < minimum_character:
-                                continue
-                            elif len(password) > maximum_character:
-                                continue
-                            elif not password.startswith(begin):
-                                continue
-                            elif not password.endswith(end):
-                                continue
-
                             # Create temporary work file containing encryption data for decryption purposes
                             temp_file = "".join(random.choices(self.rand_char_string, k=16))  + "_" + "_".join(password.split(" "))
                             temp_file_path = os.path.join(temp_folder_path, temp_file)
@@ -1060,10 +965,6 @@ class Main:
                         print("Total:[%s / %s]  Cipher: %s [%s / %s]  Digest: %s [%s / %s]" % (
                             current_iter, self.iter_required, cipher, c.index(cipher), len(c), digest, d.index(digest), len(d)), end="\033[K\r"
                         )
-
-                        if self.args.regex_string:
-                            if not re.fullmatch(self.args.regex_string, self.args.passwd):
-                                continue
                         
                         temp_file = "".join(random.choices(self.rand_char_string, k=16))  + "_" + "_".join(self.args.passwd.split(" "))
                         temp_file_path = os.path.join(temp_folder_path, temp_file)
@@ -1084,78 +985,54 @@ class Main:
 
                         pool.add_task(self.sslbrute, cipher, digest, self.args.input_file, temp_file_path, self.args.passwd, None)
             
-            elif self.args.regex_string:  # Regex provided
-                try:
-                    re.compile(self.args.regex_string)
-                except re.error:
-                    raise CrowbarExceptions("ERROR: Regex provided is not valid")
-                
-                regex_list = self.regex_reader(self.args.regex_string)
-                char_count = 0
-                iter_required = 1
-                fixed = []
-                temp = []
-                password_index = []
-                for component in regex_list:
-                    if component[1] == 0:
-                        fixed.insert(0, [component[0], char_count])
-                    else:
-                        iter_required *= len(component[0]) ** component[1]
-                    char_count += component[1]
-                    for i in range(component[1]):
-                        password_index.append([0, component[0]])
-                
-                temp = password_index[:]
-                print(f"Iterations required: {iter_required * len(c) * len(d)}")
-                self.iter_required = iter_required * len(c) * len(d)
-                total_time = time()
-                
-                for cipher in c:
-                    for digest in d:
-
-                        count = 0
-                        password_index = temp[:]
-                        while len(password_index) <= char_count:
-
-                            current_iter = (c.index(cipher) * len(d) + d.index(digest)) * (iter_required) + (count)
-                            print("Total:[%s / %s]  Cipher: %s [%s / %s]  Digest: %s [%s / %s]  Password:[%s / %s]" % (
-                                current_iter, self.iter_required, cipher, c.index(cipher), len(c), digest, d.index(digest), len(d), count, iter_required), end="\033[K\r"
-                            )
-
-                            password = self.regex_brute(password_index)
-                            if len(password_index) > char_count:
-                                break
-
-                            for f in fixed:
-                                if len(password) == f[1]:  # Fixed password is at end
-                                    password = password + f[0]
-                                elif f[1] == 0:  # Fixed password is at beginning
-                                    password = f[0] + password
-                                else:  # Fixed password is in between
-                                    password = password[:f[1]] + f[0] + password[f[1]:]
-                            
-                            temp_file = "".join(random.choices(self.rand_char_string, k=16))  + "_" + "_".join(password.split(" "))
-                            temp_file_path = os.path.join(temp_folder_path, temp_file)
-
-                            tries = 0
-                            while os.path.exists(temp_file_path):
-                                
-                                if tries >= 5:
-                                    mess = "Unable to create a temporary directory"
-                                    raise CrowbarExceptions(mess)
-
-                                temp_file = "".join(random.choices(self.rand_char_string, k=16))
-                                temp_file_path = os.path.join(temp_folder_path, temp_file)
-                                tries += 1
-                            
-                            with open(temp_file_path, "w") as f:
-                                pass
-                            
-                            pool.add_task(self.sslbrute, cipher, digest, self.args.input_file, temp_file_path, password, None)
-                            password_index[-1][0] += 1
-                            count += 1
-
             else:  # No password provided (Use charset to brute-force)
+
+                if not self.args.min_char:
+                    minimum_character = 1  # Default minimum character
+                else:
+                    minimum_character = int(self.args.min_char)
+
+                if not self.args.max_char:
+                    maximum_character = 16  # Default maximum character
+                else:
+                    maximum_character = int(self.args.max_char)
+                
+                if not self.args.charset:
+                    charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"  # Default charset
+                else:
+                    charset = str(self.args.charset)
+                
+                if not self.args.begin_with:
+                    begin = ""  # Default beginning characters
+                else:
+                    begin = str(self.args.begin_with)
+                
+                if not self.args.end_with:
+                    end = ""  # Default ending characters
+                else:
+                    end = str(self.args.end_with)
+                
+                # Run checks to ensure validity of arguments
+                if minimum_character <= 0:
+                    mess = "Minimum character cannot be lower or equal to 0!"
+                    raise CrowbarExceptions(mess)
+                elif maximum_character <= 0:
+                    mess = "Maximum character cannot be lower or equal to 0!"
+                    raise CrowbarExceptions(mess)
+                elif minimum_character > maximum_character:
+                    mess = "Minimum character specified cannot be lower than that maximum character!"
+                    raise CrowbarExceptions(mess)
+                elif len(begin) + len(end) >= maximum_character:
+                    mess = "Length of beginning and ending characters cannot be same or more than the specified maximum number of characters!"
+                    raise CrowbarExceptions(mess)
+
+                if minimum_character > len(begin) + len(end):
+                    minimum_character -= len(begin) + len(end)
+                else:
+                    minimum_character = 1
+                
+                maximum_character -= len(begin) + len(end)
+                ceiling = len(charset)
 
                 start_num = 0
                 for i in range(1, minimum_character):
@@ -1191,26 +1068,6 @@ class Main:
 
                             password = begin + self.dec_to_charset(count, charset) + end
 
-                            # Filters
-                            valid = True
-                            if not password:
-                                valid = False
-                            elif self.args.regex_string:
-                                if not re.fullmatch(self.args.regex_string, password):
-                                    valid = False
-                            elif len(password) < minimum_character:
-                                valid = False
-                            elif len(password) > maximum_character:
-                                valid = False
-                            elif not password.startswith(begin):
-                                valid = False
-                            elif not password.endswith(end):
-                                valid = False
-                            
-                            if not valid:
-                                count += 1
-                                continue
-
                             temp_file = "".join(random.choices(self.rand_char_string, k=16))  + "_" + "_".join(password.split(" "))
                             temp_file_path = os.path.join(temp_folder_path, temp_file)
 
@@ -1230,7 +1087,8 @@ class Main:
 
                             pool.add_task(self.sslbrute, cipher, digest, self.args.input_file, temp_file_path, password, None)
 
-                            count += 1 
+                            count += 1
+                            # count_in_one_second += 1  
            
         pool.wait_completion()
 
@@ -1270,78 +1128,12 @@ class Main:
             else:
                 os.remove("temptest.txt")
 
+    
     def dec_to_charset(self, n, charset):  # New password brute-force algorithm
         if n < len(charset):
             return charset[n]
         else:
             return self.dec_to_charset(n // len(charset) - 1, charset) + charset[n % len(charset)]
-    
-    def regex_brute(self, password_index):
-        for i in range(len(password_index)):
-            if password_index[len(password_index) - i - 1][0] == len(password_index[len(password_index) - i - 1][1]):
-                if i != len(password_index) - 1:  # If it is not the last iteration
-                    password_index[len(password_index) - i - 1][0] = 0
-                    password_index[len(password_index) - i - 2][0] += 1
-                else:
-                    password_index[0][0] = 0
-                    password_index.insert(0, 0)
-                    return "".join([i[1][i[0]] for i in password_index[1:]])
-        return "".join(i[1][i[0]] for i in password_index)
-
-    def create_charset(self, r_str):  # r_str --> regex_string
-        output = ""
-        for letter in string.printable:
-            if re.match(r_str, letter):
-                output += letter
-        return output
-
-    def regex_reader(self, r_str):  # Translate regex to list [[charset, len], [charset, len],...]
-        output = []
-        while r_str:
-
-            output.append(["", 0])
-
-            if r_str[0] == "[":
-                end_index = r_str.index("]")
-                temp = self.create_charset(r_str[0:end_index + 1])
-                output[-1][0] = temp
-                output[-1][1] = 1
-                r_str = r_str[end_index + 1:]
-
-                if not r_str:
-                    break
-
-                if r_str[0] == "{":
-                    end_index = r_str.index("}")
-                    output[-1][1] = (int(r_str[1:end_index]))
-                    r_str = r_str[end_index + 1:]
-                
-            else:
-
-                end_index = r_str.find("[")
-
-                if end_index == -1:
-                    temp = r_str
-                    output[-1][0] = temp
-                    r_str = ""
-            
-                else:
-                    temp = r_str[0:end_index]
-                    output[-1][0] = temp
-                    r_str = r_str[end_index:]
-
-        # Check for consecutive duplicated charset (to combine them)
-        updated = True
-        while updated:
-            updated = False    
-            for i in range(len(output) - 1):
-                if output[i][0] == output[i + 1][0]:
-                    output[i][1] += output[i + 1][1]
-                    del output[i + 1]
-                    updated = True
-                    break  # Since the list is updated, need to re-iterate to avoid index error
-        
-        return output
 
     def run(self, brute_type):
         signal.signal(signal.SIGINT, self.signal_handler)
