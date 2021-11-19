@@ -242,7 +242,7 @@ OpenSSL brute force attempt to a single encrypted file using a cipher list, dige
 # crowbar -b openssl --infile a.enc --outfile a.txt --cipherfile lists/cipher_list.txt --digestfile lists/digest_list.txt -C lists/smallyou.txt
 ```
 
-![]https://raw.githubusercontent.com/Celestares/crowbar/master/images/crowvar-ssl.png
+![]https://raw.githubusercontent.com/Celestares/crowbar/master/images/crowbar-ssl.png
 
 - - -
 
