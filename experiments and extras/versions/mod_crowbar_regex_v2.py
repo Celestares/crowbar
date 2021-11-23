@@ -780,7 +780,7 @@ class Main:
                             continue
                     elif len(password) < minimum_character:
                         continue
-                    elif len(password) > maximum_character:
+                    elif len(password) - len(begin) - len(end) > maximum_character:
                         continue
                     elif not password.startswith(begin):
                         continue
@@ -872,7 +872,7 @@ class Main:
                             valid = False
                     elif len(password) < minimum_character:
                         valid = False
-                    elif len(password) > maximum_character:
+                    elif len(password) - len(begin) - len(end) > maximum_character:
                         valid = False
                     elif not password.startswith(begin):
                         valid = False
@@ -1011,7 +1011,7 @@ class Main:
                                     continue
                             elif len(password) < minimum_character:
                                 continue
-                            elif len(password) > maximum_character:
+                            elif len(password) - len(begin) - len(end) > maximum_character:
                                 continue
                             elif not password.startswith(begin):
                                 continue
@@ -1200,7 +1200,7 @@ class Main:
                                     valid = False
                             elif len(password) < minimum_character:
                                 valid = False
-                            elif len(password) > maximum_character:
+                            elif len(password) - len(begin) - len(end) > maximum_character:
                                 valid = False
                             elif not password.startswith(begin):
                                 valid = False
